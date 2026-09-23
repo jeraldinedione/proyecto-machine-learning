@@ -1,0 +1,363 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+% Template oficial IEEE para conferencias. No se modifican margenes,
+% ancho de columnas ni tamanos base del documento.
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{balance}
+
+\graphicspath{{figures/}}
+\urlstyle{same}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Dinámica de la marcha para la clasificación de enfermedades neurodegenerativas:\\análisis exploratorio, calidad de datos y riesgos metodológicos}
+
+\author{
+\IEEEauthorblockN{Luis Renato Alvarez Ccopa, Andersson Chiroque Silva, David Teofilo Orihuela Serafin,\\
+Jeraldine Dione Rojas Vargas, Dayanna Gisell Quispe Gallardo}
+\IEEEauthorblockA{\textit{Universidad de Ingeniería y Tecnología (UTEC)}\\
+Lima, Perú}
+}
+
+\maketitle
+
+\begin{abstract}
+Este trabajo estudia la dinámica de la marcha como fuente de información para diferenciar sujetos sanos de pacientes con enfermedad de Parkinson, enfermedad de Huntington y esclerosis lateral amiotrófica (ELA). La tarea se formula como una clasificación supervisada multiclase cuya unidad de generalización es el sujeto. La cohorte principal, \textit{Gait in Neurodegenerative Disease Database} de PhysioNet, contiene 64 participantes y 15\,160 ciclos de marcha derivados de registros de cinco minutos. Esta primera entrega se concentra en comprender el problema, auditar los datos y definir un protocolo de evaluación antes del modelado. Se identificaron errores de formato en la metadata, valores faltantes codificados como texto, una etiqueta de clase inconsistente para ELA y una variable de severidad con riesgo de fuga de información. El control de calidad redujo el conjunto a 63 sujetos y 14\,732 ciclos, y modificó de forma sustancial la interpretación de la variabilidad de la marcha. Asimismo, se observaron diferencias demográficas importantes entre grupos y una estructura multivariada parcial, con solapamiento entre clases. Finalmente, un experimento diagnóstico mostró que una partición aleatoria de ventanas del mismo individuo eleva la exactitud balanceada de 0.622 a 0.812 respecto de una validación agrupada por sujeto. Estos hallazgos determinan las decisiones de preprocesamiento, validación y análisis que se aplicarán en la segunda etapa.
+\end{abstract}
+
+\begin{IEEEkeywords}
+análisis de marcha, ciclo de marcha, enfermedades neurodegenerativas, clasificación multiclase, fuga de información, análisis exploratorio de datos
+\end{IEEEkeywords}
+
+% ============================================================
+\section{Introducción y formulación del problema}
+% ============================================================
+
+\subsection{Motivación}
+Las enfermedades neurodegenerativas pueden alterar el control motor y producir cambios medibles en el ritmo, la variabilidad y la regularidad temporal de la marcha. Estudios clásicos sobre Huntington y ELA han documentado alteraciones en la dinámica de los ciclos de marcha, incluyendo cambios en la variabilidad y en las correlaciones de largo alcance \cite{hausdorff1997,hausdorff2000}. En años recientes, estos registros también han sido utilizados como entrada de sistemas de aprendizaje automático para tareas de clasificación y apoyo al análisis clínico \cite{gaitsurvey2024}.
+
+El interés de la marcha instrumentada radica en que ofrece mediciones repetibles y no invasivas. Sin embargo, un buen desempeño predictivo no garantiza que un modelo haya aprendido patrones asociados con la enfermedad: también puede explotar diferencias de edad, sexo, velocidad de marcha, identidad del sujeto o variables clínicas que codifican indirectamente la etiqueta. Por ello, el objetivo de P1 no es maximizar una métrica, sino establecer si el problema y los datos permiten una evaluación metodológicamente válida.
+
+\subsection{Objetivo y tarea de Machine Learning}
+El objetivo general del proyecto es desarrollar, en P2, un modelo de \textbf{clasificación supervisada multiclase} que asigne cada sujeto a una de cuatro categorías: control sano, Parkinson, Huntington o ELA. La variable objetivo es el grupo diagnóstico y la unidad primaria de generalización es el \textbf{sujeto}. Los ciclos de marcha constituyen mediciones repetidas dentro de cada persona; por tanto, su cantidad no debe confundirse con el número de observaciones estadísticamente independientes.
+
+La distribución de clases es moderadamente desigual (13--20 sujetos por grupo). En P2 se priorizarán métricas sensibles al desempeño por clase, principalmente exactitud balanceada, $F_1$ macro y matrices de confusión.
+
+\subsection{Preguntas de investigación}
+\textbf{PI1.} ¿Los descriptores temporales de la marcha contienen estructura multivariada que permita diferenciar las cuatro clases, más allá de separar controles de pacientes?
+
+\textbf{PI2.} ¿Qué magnitud de sesgo optimista introduce evaluar ventanas de ciclos como si fueran observaciones independientes en lugar de preservar la separación por sujeto?
+
+\textbf{PI3.} ¿En qué medida las diferencias observadas pueden estar asociadas con confusores demográficos o de protocolo, particularmente edad, sexo y velocidad de marcha?
+
+% ============================================================
+\section{Datos y diseño del estudio}
+% ============================================================
+
+\subsection{Cohorte principal y protocolo}
+La cohorte principal corresponde a \textit{Gait in Neurodegenerative Disease Database} (\texttt{gaitndd}), distribuida mediante PhysioNet \cite{hausdorff2000,goldberger2000}. Incluye 64 participantes: 16 controles, 15 pacientes con Parkinson, 20 con Huntington y 13 con ELA. Cada participante caminó durante aproximadamente cinco minutos a paso cómodo por un pasillo de 77~m. Los registros crudos contienen dos señales de fuerza ---pie izquierdo y derecho--- digitalizadas a 300~Hz durante 300~s, equivalentes a 90\,000 muestras por canal.
+
+Además de las señales crudas, la base proporciona archivos derivados con trece medidas temporales por ciclo. El análisis inicial contiene 15\,160 ciclos. La Tabla~\ref{tab:cohorte} resume la composición antes del control de calidad.
+
+\begin{table}[t]
+\caption{Composición de la cohorte principal antes del filtrado}
+\label{tab:cohorte}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Grupo & $n$ & Edad & Hombres & Velocidad & Ciclos \\
+ & & (años) & (\%) & (m/s) & \\
+\midrule
+Control    & 16 & 39.3 & 12.5 & 1.35 & 4\,076 \\
+Parkinson  & 15 & 66.8 & 66.7 & 1.00 & 3\,688 \\
+Huntington & 20 & 46.7 & 30.0 & 1.15 & 4\,846 \\
+ELA        & 13 & 55.6 & 76.9 & 1.05 & 2\,550 \\
+\midrule
+Total      & 64 & 48.4 & 40.6 & 1.16 & 15\,160 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.90\textwidth]{senal_fuerza_cruda.png}
+\caption{Segmento de 10~s de la señal cruda del registro \texttt{control1}. La alternancia de contactos entre ambos pies ilustra la información de la que se derivan las medidas temporales de cada ciclo.}
+\label{fig:senal}
+\end{figure*}
+
+\subsection{Jerarquía de observaciones y variables}
+El proyecto contiene varios niveles de información que no son intercambiables. La señal cruda se muestrea a 300~Hz; de ella se derivan ciclos de marcha; los ciclos pueden resumirse en ventanas; y finalmente los descriptores se agregan por sujeto. La Tabla~\ref{tab:niveles} explicita esta jerarquía, crucial para evitar fuga de información.
+
+\begin{table}[t]
+\caption{Niveles de observación y su función en el proyecto}
+\label{tab:niveles}
+\centering
+\scriptsize
+\begin{tabular}{@{}p{0.18\columnwidth}p{0.26\columnwidth}p{0.43\columnwidth}@{}}
+\toprule
+Nivel & Magnitud & Uso \\
+\midrule
+Señal cruda & 90\,000 muestras/canal & Origen de las medidas temporales \\
+Ciclo & 15\,160 inicialmente & EDA y control de calidad \\
+Ventana & 482 ventanas de 30 ciclos & Experimento diagnóstico de fuga \\
+Sujeto & 64; 63 tras control & Unidad de validación y predicción \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La información disponible se agrupa en seis familias: variable objetivo; edad y sexo; talla y peso; velocidad de marcha; medidas de ciclo (duración, balanceo, apoyo y apoyo doble); y severidad clínica. Los descriptores de ritmo, dispersión y estructura temporal se calculan en la implementación actual usando la duración del ciclo del lado izquierdo, mientras que la información bilateral se incorpora mediante medidas de asimetría. Esta elección se documenta para mantener la reproducibilidad y será objeto de un análisis de sensibilidad en P2.
+
+\subsection{Cobertura temporal y contribución por sujeto}
+Aunque todos los registros crudos duran 300~s, los sujetos no aportan la misma cantidad de ciclos. Antes del filtrado, los controles aportan en promedio 254.8 ciclos por sujeto, Parkinson 245.9, Huntington 242.3 y ELA 196.2; el rango global va de 122 a 310 ciclos. Esta diferencia está relacionada con la velocidad de marcha y con la calidad de detección, por lo que el número de ciclos no debe interpretarse como tamaño muestral independiente.
+
+Las primeras detecciones aparecen normalmente alrededor del segundo 22, consistente con un período inicial de estabilización; \texttt{hunt20} constituye la excepción con un primer ciclo alrededor del segundo 63.9. Después del control de calidad, la construcción de ventanas produce 482 observaciones (133 control, 120 Parkinson, 150 Huntington y 79 ELA). Por ello, una representación por ventanas no solo introduce dependencia entre observaciones, sino que también modifica la contribución relativa de cada clase y de cada individuo. Esta consideración refuerza la elección del sujeto como unidad de evaluación.
+
+\subsection{Cohorte externa}
+Como recurso de validación externa se incorpora \textit{Gait in Parkinson's Disease} (\texttt{gaitpdb}) \cite{frenkel2005}. Su metadata contiene 166 participantes (93 Parkinson y 73 controles), pero uno de los controles, \texttt{Juc010}, no posee archivos de señal; por tanto, existen 165 sujetos con registros disponibles. En total hay 306 grabaciones y 54 sujetos aportan más de una caminata, de modo que esta cohorte también exige agrupación por sujeto durante cualquier validación.
+
+La cohorte reúne tres subestudios con protocolos diferentes y registra ocho sensores de fuerza por pie a 100~Hz. Además, presenta un mayor balance etario entre controles y Parkinson: las edades medias son 63.7 y 66.3 años, frente a 39.3 y 66.8 años en \texttt{gaitndd}. La prueba de Welch arroja $p=0.063$ en \texttt{gaitpdb} y $p=3.21\times10^{-5}$ en la cohorte principal. Este contraste no demuestra equivalencia etaria; indica que la diferencia observada es considerablemente menor. La composición por sexo también es menos extrema en el eje Parkinson--control: 54.8\% de hombres entre los controles y 62.4\% entre Parkinson en \texttt{gaitpdb}, frente a 12.5\% y 66.7\% en la cohorte principal. La Fig.~\ref{fig:cohortes} muestra específicamente el contraste etario entre cohortes, uno de los motivos para considerar \texttt{gaitpdb} como evaluación externa del eje Parkinson--control.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.72\textwidth]{pareamiento_edad_cohortes.png}
+\caption{Distribución de edad en controles y pacientes con Parkinson de las cohortes \texttt{gaitndd} y \texttt{gaitpdb}. La cohorte externa presenta una diferencia etaria menor; este contraste se interpreta como mayor balance etario y no como evidencia de pareamiento formal.}
+\label{fig:cohortes}
+\end{figure*}
+
+
+% ============================================================
+\section{Calidad y preparación de los datos}
+% ============================================================
+
+\subsection{Auditoría de metadata y riesgo de fuga}
+La carga directa de la metadata principal no es confiable. La Tabla~\ref{tab:metadata} resume los problemas detectados y la decisión adoptada. El caso más importante desde la perspectiva de Machine Learning es \texttt{Duration/Severity}: la misma columna contiene Hoehn--Yahr en Parkinson \cite{hoehn1967}, capacidad funcional total en Huntington \cite{shoulson1979}, meses desde diagnóstico en ELA y cero en controles. Dado que su escala depende de la clase, puede revelar directamente la etiqueta y se excluye de los predictores \cite{kaufman2012}.
+
+\begin{table}[t]
+\caption{Problemas identificados en la metadata principal}
+\label{tab:metadata}
+\centering
+\scriptsize
+\begin{tabular}{@{}p{0.31\columnwidth}p{0.25\columnwidth}p{0.31\columnwidth}@{}}
+\toprule
+Problema & Alcance & Tratamiento \\
+\midrule
+Registro \texttt{hunt20} partido & 65 filas leídas para 64 sujetos & Parser específico \\
+Cadena \texttt{MISSING} & 4 campos & Conversión explícita a faltante \\
+ELA como \texttt{subjects} & 13 sujetos & Clase desde el identificador \\
+Severidad heterogénea & 4 escalas & Excluir como predictor \\
+Tallas implausibles & Varios registros & No priorizar como predictor \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{series_zancada_ejemplos.png}
+\caption{Ejemplos de series temporales de duración del ciclo de marcha durante cinco minutos. Control, Parkinson y Huntington muestran variaciones locales sobre escalas fisiológicamente plausibles, mientras el registro \texttt{als12} contiene intervalos extremadamente prolongados que motivan una auditoría explícita de calidad antes de extraer descriptores.}
+\label{fig:series}
+\end{figure*}
+
+\subsection{Reglas fisiológicas y caso \texttt{hunt20}}
+La inspección de las series derivadas (Fig.~\ref{fig:series}) muestra que los archivos no vienen filtrados y pueden contener duraciones de ciclo de hasta 55~s. Se aplicaron tres reglas de consistencia independientes de la clase: (i) duración entre 0.5 y 2.5~s, (ii) apoyo doble no negativo y (iii) porcentajes de fase dentro de $[0,100]$. La identidad algebraica balanceo$+$apoyo$=100\%$ se cumple en los 15\,160 ciclos, por lo que los principales problemas se relacionan con detección de contactos y no con la aritmética de las variables derivadas.
+
+El registro \texttt{hunt20} presenta anomalías de una magnitud distinta a la de otros sujetos. El 100\% de sus ciclos viola al menos una regla; la mediana de duración es 0.990~s en el lado izquierdo y 42.910~s en el derecho; el balanceo derecho ocupa solo 2.02\% y el apoyo 97.98\% del ciclo; y el apoyo doble varía entre $-70.23\%$ y 4317.35\%. Además, la primera detección aparece alrededor del segundo 63.9, mientras el resto de registros comienza aproximadamente en el segundo 22. La convergencia de estos indicios sugiere un fallo sistemático del canal derecho, por lo que el sujeto se excluye del análisis principal.
+
+\begin{table}[t]
+\caption{Indicadores que justifican la exclusión de \texttt{hunt20}}
+\label{tab:hunt20}
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Indicador & Izquierdo & Derecho \\
+\midrule
+Duración mediana (s) & 0.990 & 42.910 \\
+Balanceo mediano (\%) & 38.82 & 2.02 \\
+Apoyo mediano (\%) & 61.18 & 97.98 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Impacto y sensibilidad del filtrado}
+Después de aplicar las reglas y excluir \texttt{hunt20}, el conjunto pasa de 15\,160 a 14\,732 ciclos y de 64 a 63 sujetos. El descarte es diferencial por clase: 5.88\% en ELA, 5.39\% en Huntington, 0.43\% en Parkinson y 0.02\% en controles. Esta diferencia obliga a interpretar el filtrado como una decisión metodológica y no como una limpieza neutral.
+
+El efecto del filtrado es sustancial. El CV medio de ELA cae de 0.431 a 0.063 y el de Parkinson de 0.189 a 0.074; en Huntington cambia de 0.138 a 0.105 y en controles de 0.044 a 0.041. Por tanto, tras el filtrado Huntington presenta el mayor CV, mientras que la aparente variabilidad extrema de ELA se reduce marcadamente. Para evitar una depuración excesiva no se aplicó un segundo criterio estadístico basado en mediana $\pm4$ MAD, que habría descartado 324 ciclos adicionales. La sensibilidad a esta decisión quedará como análisis de robustez para P2, porque una observación extrema en una marcha patológica puede representar tanto un artefacto como un evento clínicamente informativo.
+
+% ============================================================
+\section{Análisis exploratorio de datos}
+% ============================================================
+
+\subsection{Composición de la cohorte y confusores}
+Los cuatro grupos no son demográficamente comparables (Fig.~\ref{fig:confusores}). Los controles tienen una edad media de 39.3 años frente a 66.8 años en Parkinson. La proporción de hombres varía desde 12.5\% en controles hasta 76.9\% en ELA. La velocidad media también difiere: 1.35~m/s en controles, 1.00~m/s en Parkinson, 1.15~m/s en Huntington y 1.05~m/s en ELA. En consecuencia, un clasificador podría explotar patrones asociados con composición demográfica o velocidad sin aprender exclusivamente características de la patología.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.86\textwidth]{confusores_demograficos.png}
+\caption{Edad, composición por sexo y velocidad de marcha por grupo en la cohorte principal. Las diferencias de composición constituyen confusores potenciales para el modelado.}
+\label{fig:confusores}
+\end{figure*}
+
+La relación con los descriptores confirma esta preocupación. La velocidad correlaciona $-0.637$ con el porcentaje medio de apoyo doble, $-0.528$ con el CV y $-0.475$ con la duración media del ciclo. Las correlaciones con edad son menores en magnitud; el máximo observado es 0.373 para apoyo doble. Estas asociaciones no permiten una interpretación causal de las diferencias entre grupos a partir de \texttt{gaitndd} por sí solo.
+
+\subsection{Descriptores temporales y separabilidad}
+De cada serie filtrada se obtienen descriptores de ritmo, dispersión, simetría y estructura temporal. Entre ellos se incluyen duración media del ciclo, cadencia, CV, rango intercuartílico, asimetría izquierda--derecha, autocorrelación de retardo uno y el exponente $\alpha$ de \textit{detrended fluctuation analysis} (DFA) \cite{peng1995}.
+
+La Tabla~\ref{tab:descriptores} resume seis descriptores representativos y la Fig.~\ref{fig:descriptores} muestra sus distribuciones por sujeto. Huntington presenta la mayor variabilidad, la mayor asimetría media y los valores más bajos de autocorrelación y DFA. ELA presenta la mayor duración media del ciclo y el mayor porcentaje de apoyo doble. Parkinson queda en una posición intermedia en varios indicadores. No obstante, estos patrones son descriptivos: las distribuciones por sujeto se solapan y ningún descriptor aislado separa completamente las cuatro clases.
+
+\begin{table}[t]
+\caption{Descriptores medios por grupo tras el filtrado}
+\label{tab:descriptores}
+\centering
+\scriptsize
+\begin{tabular}{lrrrrrr}
+\toprule
+Grupo & Dur. & CV & Ap. dob. & Asim. & ACF1 & $\alpha$ \\
+ & (s) & & (\%) & & & \\
+\midrule
+Control    & 1.097 & .041 & 28.2 & .035 & .486 & .875 \\
+Parkinson  & 1.125 & .074 & 34.0 & .157 & .322 & .805 \\
+Huntington & 1.152 & .105 & 32.0 & .258 & .190 & .653 \\
+ELA        & 1.356 & .063 & 35.3 & .114 & .434 & .850 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.90\textwidth]{descriptores_por_grupo.png}
+\caption{Distribución por grupo de seis descriptores de marcha tras el filtrado. Cada punto representa un sujeto; el solapamiento entre distribuciones refuerza que ningún descriptor aislado separa completamente las cuatro clases.}
+\label{fig:descriptores}
+\end{figure*}
+
+\subsection{Estructura multivariada y redundancia}
+Para explorar la estructura conjunta se estandarizaron las características por sujeto y se aplicó PCA. Los dos primeros componentes explican 72\% de la varianza total (54.5\% en CP1 y 17.6\% en CP2). La Fig.~\ref{fig:multi} muestra una concentración parcial de controles y una mayor dispersión de Huntington, pero persiste un solapamiento considerable, especialmente entre Parkinson y ELA. Por tanto, el EDA sugiere señal multivariada, aunque no demuestra capacidad predictiva fuera de muestra.
+
+La matriz de correlación identifica además redundancias que deberán tratarse en P2. La autocorrelación de retardo uno y DFA presentan $r=0.86$, mientras la duración media del ciclo y el número de ciclos observados tienen $r=-0.89$. Estas relaciones indican que aumentar indiscriminadamente el número de características no necesariamente añade información independiente.
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[t]{0.43\textwidth}
+\centering
+\includegraphics[width=\linewidth]{pca_sujetos.png}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{correlacion_descriptores.png}
+\end{minipage}
+\caption{Análisis multivariado a nivel de sujeto. Izquierda: PCA de 63 sujetos, con 72\% de varianza explicada por CP1 y CP2. Derecha: matriz de correlación de descriptores, que evidencia relaciones redundantes entre algunas características.}
+\label{fig:multi}
+\end{figure*}
+
+% ============================================================
+\section{Riesgos metodológicos para el modelado}
+% ============================================================
+
+\subsection{Dependencia entre observaciones y fuga por sujeto}
+El problema central de la unidad de análisis surge porque cada persona aporta decenas o cientos de ciclos. Ventanas derivadas del mismo sujeto comparten fisiología, antropometría, sesión de medición y condiciones instrumentales. Si una partición aleatoria coloca ventanas de una misma persona en entrenamiento y validación, el modelo puede reconocer al individuo en lugar de aprender patrones generalizables de enfermedad \cite{saeb2017}.
+
+Para cuantificar este riesgo se realizó un \textbf{experimento diagnóstico}, no un resultado final de modelado. Se generaron 482 ventanas de 30 ciclos a partir de 63 sujetos y se utilizó el mismo bosque aleatorio de 300 árboles bajo tres esquemas de evaluación, implementados con scikit-learn \cite{pedregosa2011}. La Tabla~\ref{tab:leakage} resume los resultados. La partición aleatoria de ventanas obtiene $0.812\pm0.049$ de exactitud balanceada; al agrupar por sujeto el valor cae a $0.622\pm0.086$; y la evaluación directamente a nivel de sujeto alcanza $0.642\pm0.048$. La diferencia aproximada de 19 puntos porcentuales entre los dos esquemas de ventanas proviene únicamente de la estrategia de partición.
+
+\begin{table}[t]
+\caption{Experimento diagnóstico según unidad y partición}
+\label{tab:leakage}
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+Unidad & Partición & Exactitud bal. \\
+\midrule
+Ventanas (30 ciclos) & Aleatoria & $0.812\pm0.049$ \\
+Ventanas (30 ciclos) & Por sujeto & $0.622\pm0.086$ \\
+Sujeto & Estratificada & $0.642\pm0.048$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La cercanía entre 0.622 con agrupación y 0.642 a nivel de sujeto respalda el uso de particiones agrupadas como estimación más coherente con el caso de uso. En P2, tanto la validación como la búsqueda de hiperparámetros deberán mantener la independencia entre individuos para evitar que la fuga reaparezca durante la selección del modelo \cite{varoquaux2018}.
+
+\subsection{Validez externa y diferencias de protocolo}
+La cohorte externa no debe tratarse como una extensión intercambiable de \texttt{gaitndd}. Cambian la frecuencia de muestreo, el número de sensores, la duración de las grabaciones y el protocolo entre subestudios. Además, 54 sujetos poseen múltiples caminatas. Por ello, la validación externa se planteará como una prueba de transporte del eje Parkinson--control a un dominio diferente, no como una simple ampliación del conjunto de entrenamiento.
+
+La metadata de \texttt{gaitpdb} introduce también riesgos propios: las unidades de talla difieren entre subestudios y variables como Hoehn--Yahr y UPDRS separan fuertemente pacientes y controles. Estas variables se conservarán para descripción clínica o tareas secundarias, pero no como predictores del diagnóstico.
+
+\subsection{Limitaciones de P1}
+El análisis identifica seis amenazas principales: tamaño muestral reducido a nivel de sujeto; clases no uniformes; confusión por edad, sexo y velocidad; filtrado diferencial por grupo; dependencia entre mediciones repetidas; y diferencias de protocolo entre cohortes. Adicionalmente, el criterio fisiológico de filtrado no puede distinguir con certeza entre un artefacto de sensor y un episodio motor anómalo real. Estas limitaciones no invalidan el proyecto, pero condicionan las afirmaciones que podrán hacerse en P2.
+
+% ============================================================
+\section{Siguientes pasos del proyecto}
+% ============================================================
+
+Los hallazgos de P1 se traducen en restricciones concretas para P2. Toda validación y búsqueda de hiperparámetros deberá preservar la independencia entre sujetos. El desbalance y el tamaño muestral reducido se abordarán con exactitud balanceada, $F_1$ macro, métricas por clase y dispersión entre particiones. Los confusores se estudiarán mediante análisis por subgrupos y el contraste Parkinson--control con la cohorte externa; la redundancia de características motivará regularización y selección de variables; y el filtrado se someterá a análisis de sensibilidad. \texttt{gaitpdb} se reservará como evaluación externa, controlando además el subestudio de origen.
+
+Se establecerán al menos dos referencias: un clasificador trivial y un baseline sencillo basado en variables de marcha. Luego se compararán, como mínimo, regresión logística multinomial regularizada y un ensamble de árboles; un enfoque sobre series temporales crudas se considerará como extensión si el tamaño muestral y el esquema de validación lo permiten. La interpretación incluirá matrices de confusión, importancia de características y análisis de errores, con especial atención a las clases que muestren mayor solapamiento.
+
+% ============================================================
+\section{Síntesis de la primera etapa}
+% ============================================================
+
+P1 muestra que el desafío del proyecto no consiste únicamente en entrenar un clasificador. La auditoría revela problemas de formato, valores faltantes, una etiqueta inconsistente, variables clínicas con riesgo de fuga y registros fisiológicamente implausibles. Además, la decisión de filtrado altera de manera sustancial la lectura de la variabilidad entre patologías, por lo que la calidad de datos forma parte del problema de investigación y no es un paso puramente operativo.
+
+El EDA indica que existen diferencias entre grupos en ritmo, dispersión, simetría y estructura temporal; sin embargo, las distribuciones se solapan y los dos primeros componentes principales no separan completamente las clases. A ello se suman confusores importantes, particularmente la diferencia de edad entre controles y Parkinson. En consecuencia, estos patrones deben considerarse evidencia exploratoria y no una demostración de capacidad diagnóstica.
+
+Finalmente, el experimento de partición confirma que la unidad de validación es decisiva: usar ventanas aleatorias del mismo sujeto produce una estimación artificialmente optimista. P2 se desarrollará, por tanto, con validación agrupada por sujeto, baselines explícitos, control de confusores, análisis de sensibilidad y evaluación externa antes de formular conclusiones sobre generalización.
+
+\section*{Disponibilidad del código y reproducibilidad}
+El código fuente, notebooks ejecutados, figuras, pruebas e instrucciones de reproducción están disponibles en el repositorio público del proyecto:\\
+\url{https://github.com/jeraldinedione/proyecto-machine-learning}
+
+Los datos originales no se redistribuyen en el repositorio. Los scripts incluidos documentan su descarga desde PhysioNet y separan la lógica reusable de los notebooks de análisis. La trazabilidad de los resultados centrales se conserva en los notebooks ejecutados y en los módulos de \texttt{src/gait/}: allí se reproducen el paso de 15\,160 a 14\,732 ciclos, la exclusión de \texttt{hunt20}, el análisis PCA, el experimento de fuga por sujeto y la caracterización de la cohorte externa. El repositorio incluye además \texttt{README.md}, documentación de datos, figuras, pruebas automatizadas y el archivo de dependencias necesario para recrear el entorno de ejecución.
+
+\balance
+\begin{thebibliography}{00}
+
+\bibitem{hausdorff1997}
+J. M. Hausdorff, S. L. Mitchell, R. Firtion, C.-K. Peng, M. E. Cudkowicz, J. Y. Wei, and A. L. Goldberger, ``Altered fractal dynamics of gait: reduced stride-interval correlations with aging and Huntington's disease,'' \textit{Journal of Applied Physiology}, vol. 82, no. 1, pp. 262--269, 1997.
+
+\bibitem{hausdorff2000}
+J. M. Hausdorff, A. Lertratanakul, M. E. Cudkowicz, A. L. Peterson, D. Kaliton, and A. L. Goldberger, ``Dynamic markers of altered gait rhythm in amyotrophic lateral sclerosis,'' \textit{Journal of Applied Physiology}, vol. 88, no. 6, pp. 2045--2053, 2000.
+
+\bibitem{gaitsurvey2024}
+H. Rao, M. Zeng, X. Zhao, and C. Miao, ``A survey of artificial intelligence in gait-based neurodegenerative disease diagnosis,'' \textit{arXiv preprint arXiv:2405.13082}, 2024.
+
+\bibitem{goldberger2000}
+A. L. Goldberger \textit{et al.}, ``PhysioBank, PhysioToolkit, and PhysioNet: components of a new research resource for complex physiologic signals,'' \textit{Circulation}, vol. 101, no. 23, pp. e215--e220, 2000.
+
+\bibitem{frenkel2005}
+S. Frenkel-Toledo, N. Giladi, C. Peretz, T. Herman, L. Gruendlinger, and J. M. Hausdorff, ``Treadmill walking as an external pacemaker to improve gait rhythm and stability in Parkinson's disease,'' \textit{Movement Disorders}, vol. 20, no. 9, pp. 1109--1114, 2005.
+
+\bibitem{hoehn1967}
+M. M. Hoehn and M. D. Yahr, ``Parkinsonism: onset, progression and mortality,'' \textit{Neurology}, vol. 17, no. 5, pp. 427--442, 1967.
+
+\bibitem{shoulson1979}
+I. Shoulson and S. Fahn, ``Huntington disease: clinical care and evaluation,'' \textit{Neurology}, vol. 29, no. 1, pp. 1--3, 1979.
+
+\bibitem{kaufman2012}
+S. Kaufman, S. Rosset, C. Perlich, and O. Stitelman, ``Leakage in data mining: formulation, detection, and avoidance,'' \textit{ACM Transactions on Knowledge Discovery from Data}, vol. 6, no. 4, pp. 1--21, 2012.
+
+\bibitem{peng1995}
+C.-K. Peng, S. Havlin, H. E. Stanley, and A. L. Goldberger, ``Quantification of scaling exponents and crossover phenomena in nonstationary heartbeat time series,'' \textit{Chaos}, vol. 5, no. 1, pp. 82--87, 1995.
+
+\bibitem{saeb2017}
+S. Saeb, L. Lonini, A. Jayaraman, D. C. Mohr, and K. P. Kording, ``The need to approximate the use-case in clinical machine learning,'' \textit{GigaScience}, vol. 6, no. 5, pp. 1--9, 2017.
+
+\bibitem{pedregosa2011}
+F. Pedregosa \textit{et al.}, ``Scikit-learn: Machine Learning in Python,'' \textit{Journal of Machine Learning Research}, vol. 12, pp. 2825--2830, 2011.
+
+\bibitem{varoquaux2018}
+G. Varoquaux, ``Cross-validation failure: small sample sizes lead to large error bars,'' \textit{NeuroImage}, vol. 180, pp. 68--77, 2018.
+
+\end{thebibliography}
+
+\end{document}
