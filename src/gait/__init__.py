@@ -1,3 +1,14 @@
-from . import config, download, features, gaitndd, gaitpdb, plots, quality
+from . import config, cohort, download, evaluation, features, gaitndd, gaitpdb, models, plots, quality
 
-__all__ = ["config", "download", "features", "gaitndd", "gaitpdb", "plots", "quality"]
+__all__ = [
+    "config",
+    "cohort",
+    "download",
+    "evaluation",
+    "features",
+    "gaitndd",
+    "gaitpdb",
+    "models",
+    "plots",
+    "quality",
+]

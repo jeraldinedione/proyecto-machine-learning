@@ -114,3 +114,116 @@ def record_index() -> pd.DataFrame:
 def read_forces(record: str) -> pd.DataFrame:
     values = np.loadtxt(_root() / f"{record}.txt")
     return pd.DataFrame(values, columns=FORCE_COLUMNS)
+
+
+CONTACT_FRACTION = 0.05
+MIN_PHASE_S = 0.1
+
+
+def _runs(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    edges = np.flatnonzero(np.diff(np.concatenate([[0], mask.astype(int), [0]])))
+    return edges[::2], edges[1::2]
+
+
+def _debounce(mask: np.ndarray, min_samples: int) -> np.ndarray:
+    mask = mask.copy()
+    for start, end in zip(*_runs(~mask)):
+        if end - start < min_samples and start > 0 and end < len(mask):
+            mask[start:end] = True
+    for start, end in zip(*_runs(mask)):
+        if end - start < min_samples:
+            mask[start:end] = False
+    return mask
+
+
+def contact_threshold(force: np.ndarray, fraction: float = CONTACT_FRACTION) -> float:
+    return float(fraction * np.percentile(force, 99))
+
+
+def contact_mask(
+    force: np.ndarray,
+    fraction: float = CONTACT_FRACTION,
+    min_phase_s: float = MIN_PHASE_S,
+    sampling_hz: int = SAMPLING_HZ,
+    threshold_n: float | None = None,
+) -> np.ndarray:
+    threshold = contact_threshold(force, fraction) if threshold_n is None else threshold_n
+    return _debounce(force > threshold, int(round(min_phase_s * sampling_hz)))
+
+
+def gait_events(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    onsets, offsets = _runs(mask)
+    return onsets[onsets > 0], offsets[offsets < len(mask)]
+
+
+def _next_event(events: np.ndarray, after: int) -> int | None:
+    position = np.searchsorted(events, after, side="right")
+    return int(events[position]) if position < len(events) else None
+
+
+def _stride_row(
+    start: int,
+    end: int,
+    events: dict[str, np.ndarray],
+    both: np.ndarray,
+    sampling_hz: int,
+) -> dict[str, float] | None:
+    left_off = _next_event(events["left_off"], start)
+    right_on = _next_event(events["right_on"], start)
+    if left_off is None or right_on is None or left_off >= end or right_on >= end:
+        return None
+    right_next = _next_event(events["right_on"], right_on)
+    right_off = _next_event(events["right_off"], right_on)
+    if right_next is None or right_off is None or right_off >= right_next:
+        return None
+
+    stride_left = (end - start) / sampling_hz
+    stride_right = (right_next - right_on) / sampling_hz
+    stance_left = (left_off - start) / sampling_hz
+    stance_right = (right_off - right_on) / sampling_hz
+    double_support = both[start:end].sum() / sampling_hz
+    return {
+        "time_s": end / sampling_hz,
+        "stride_left_s": stride_left,
+        "stride_right_s": stride_right,
+        "swing_left_s": stride_left - stance_left,
+        "swing_right_s": stride_right - stance_right,
+        "swing_left_pct": 100 * (stride_left - stance_left) / stride_left,
+        "swing_right_pct": 100 * (stride_right - stance_right) / stride_right,
+        "stance_left_s": stance_left,
+        "stance_right_s": stance_right,
+        "stance_left_pct": 100 * stance_left / stride_left,
+        "stance_right_pct": 100 * stance_right / stride_right,
+        "double_support_s": double_support,
+        "double_support_pct": 100 * double_support / stride_left,
+    }
+
+
+def stride_table(forces: pd.DataFrame, sampling_hz: int = SAMPLING_HZ, **detection) -> pd.DataFrame:
+    left = contact_mask(forces.left_total.to_numpy(), sampling_hz=sampling_hz, **detection)
+    right = contact_mask(forces.right_total.to_numpy(), sampling_hz=sampling_hz, **detection)
+    left_on, left_off = gait_events(left)
+    right_on, right_off = gait_events(right)
+    events = {"left_off": left_off, "right_on": right_on, "right_off": right_off}
+
+    rows = [
+        _stride_row(start, end, events, left & right, sampling_hz)
+        for start, end in zip(left_on[:-1], left_on[1:])
+    ]
+    return pd.DataFrame([row for row in rows if row is not None])
+
+
+def read_strides(record: str, **detection) -> pd.DataFrame:
+    strides = stride_table(read_forces(record), **detection)
+    info = parse_record(record)
+    strides.insert(0, "record", info["subject"])
+    strides.insert(1, "group", info["group"])
+    strides.insert(2, "stride_index", np.arange(len(strides)))
+    strides.insert(3, "study", info["study"])
+    return strides
+
+
+def read_baseline_strides(**detection) -> pd.DataFrame:
+    records = record_index()
+    baseline = records.loc[records.walk == 1, "record"]
+    return pd.concat([read_strides(record, **detection) for record in baseline], ignore_index=True)

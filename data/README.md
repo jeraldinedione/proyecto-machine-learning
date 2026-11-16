@@ -76,6 +76,8 @@ Documentados en detalle en `notebooks/01_eda_gaitndd.ipynb`, sección 5.
 
 Incluye puntajes **UPDRS** y estadio **Hoehn & Yahr**, lo que habilita una tarea secundaria de regresión de severidad.
 
+**Series de zancada (P2).** `gaitpdb` no trae intervalos de zancada ya calculados. `gait.gaitpdb.read_baseline_strides()` los extrae de la fuerza total bajo cada pie: contacto cuando la fuerza supera el 5 % de su percentil 99, huecos y contactos menores a 0.1 s eliminados, apoyo de talón al inicio de cada contacto y despegue al final. La tabla resultante tiene las mismas columnas que los `.ts` de `gaitndd`, de modo que se le aplican las mismas reglas de calidad y el mismo cálculo de descriptores. Solo se usa la primera caminata de cada sujeto (`_01`), la de referencia; varias de las siguientes corresponden a condiciones experimentales como la doble tarea. El notebook 06 evalúa la sensibilidad de los resultados a este umbral.
+
 ## Citas requeridas
 
 Hausdorff, J. M., Lertratanakul, A., Cudkowicz, M. E., Peterson, A. L., Kaliton, D., & Goldberger, A. L. (2000). Dynamic markers of altered gait rhythm in amyotrophic lateral sclerosis. *Journal of Applied Physiology*, 88(6), 2045–2053.

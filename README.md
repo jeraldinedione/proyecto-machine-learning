@@ -1,6 +1,6 @@
 # Marcha y enfermedad neurodegenerativa
 
-Clasificación diferencial de enfermedades neurodegenerativas (Parkinson, Huntington, ELA) a partir de la dinámica temporal de la marcha.
+Clasificación de enfermedades neurodegenerativas (Parkinson, Huntington, ELA) a partir de la dinámica temporal de la marcha.
 
 **Proyecto Final — Machine Learning · UTEC 2026-1**
 
@@ -10,7 +10,7 @@ Clasificación diferencial de enfermedades neurodegenerativas (Parkinson, Huntin
 
 El Parkinson, la enfermedad de Huntington y la esclerosis lateral amiotrófica alteran el control motor por mecanismos distintos y producen patrones de marcha distintos. Este proyecto evalúa si descriptores derivados de cinco minutos de marcha instrumentada permiten discriminar **entre** estas patologías, y no solo separar enfermos de sanos.
 
-La tarea es de **clasificación supervisada multiclase** con el sujeto como unidad de análisis (4 clases, 64 sujetos).
+La tarea es de **clasificación supervisada multiclase** con el sujeto como unidad de análisis (4 clases, 63 sujetos tras el control de calidad).
 
 ### Preguntas de investigación
 
@@ -24,6 +24,7 @@ La tarea es de **clasificación supervisada multiclase** con el sujeto como unid
 - Andersson Chiroque Silva
 - David Teofilo Orihuela Serafin
 - Jeraldine Dione Rojas Vargas
+- Dayanna Gisell Quispe Gallardo
 
 Universidad de Ingeniería y Tecnología — Lima, Perú
 
@@ -40,40 +41,39 @@ Ambos se distribuyen bajo licencia **Open Data Commons Attribution v1.0** y son 
 
 ```
 .
-├── src/gait/              Paquete con la lógica reutilizable
-│   ├── config.py          Rutas, especificación de datasets, constantes
-│   ├── download.py        Descarga y extracción desde PhysioNet
-│   ├── gaitndd.py         Carga de la cohorte principal
-│   ├── gaitpdb.py         Carga de la cohorte de validación externa
-│   ├── quality.py         Reglas de validez fisiológica y reporte de calidad
-│   ├── features.py        Descriptores por sujeto y por ventana (CV, DFA, asimetría)
-│   └── plots.py           Estilo y componentes de figuras
+├── src/gait/                    Paquete con la lógica reutilizable
+│   ├── config.py                Rutas, datasets, listas de descriptores y constantes
+│   ├── download.py              Descarga y extracción desde PhysioNet
+│   ├── gaitndd.py               Carga de la cohorte principal
+│   ├── gaitpdb.py               Carga de la cohorte externa y extracción de zancadas desde la fuerza plantar
+│   ├── quality.py               Reglas de validez fisiológica y reporte de calidad
+│   ├── features.py              Descriptores por sujeto y por ventana (CV, DFA, entropía muestral, ...)
+│   ├── cohort.py                Filtrado y construcción de las tablas de modelado
+│   ├── models.py                Referencias, modelos y espacios de hiperparámetros
+│   ├── evaluation.py            Validación cruzada anidada, métricas y pruebas estadísticas
+│   └── plots.py                 Estilo y componentes de figuras
 ├── notebooks/
-│   ├── 01_eda_gaitndd.ipynb      Análisis exploratorio de la cohorte principal
-│   └── 02_cohorte_gaitpdb.ipynb  Caracterización de la cohorte de validación
-├── tests/                 Verificación de los descriptores y las reglas de calidad
+│   ├── 01_eda_gaitndd.ipynb           P1 · Análisis exploratorio de la cohorte principal
+│   ├── 02_cohorte_gaitpdb.ipynb       P1 · Caracterización de la cohorte externa
+│   ├── 03_preprocesamiento.ipynb      P2 · Filtrado, descriptores y variables excluidas
+│   ├── 04_modelado.ipynb              P2 · Referencias, modelos, validación anidada y comparación
+│   ├── 05_interpretacion.ipynb        P2 · Errores, importancia, confusores y sensibilidad
+│   └── 06_validacion_externa.ipynb    P2 · Transporte del modelo a gaitpdb
+├── scripts/
+│   ├── descargar_datos.py       Descarga ambas cohortes
+│   └── ejecutar_notebooks.py    Ejecuta los notebooks sin interfaz y guarda sus salidas
+├── tests/                       Pruebas de descriptores, calidad, extracción de zancadas y evaluación
 ├── paper/
-│   ├── main.tex           Artículo en formato IEEE
-│   ├── presentacion.tex   Presentación (Beamer)
-│   └── refs.bib
-├── reports/figures/       Figuras generadas por los notebooks
-├── data/                  Datos crudos (no versionados)
+│   ├── p1/                      Artículo y presentación de la entrega 1
+│   └── p2/                      Artículo y presentación de la entrega 2
+├── reports/
+│   ├── figures/                 Figuras generadas por los notebooks
+│   └── tables/                  Resultados en CSV generados por los notebooks
+├── data/                        Datos crudos y procesados (no versionados)
 └── requirements.txt
 ```
 
-Los descriptores no triviales están verificados contra señales de exponente conocido: el estimador de DFA recupera `alpha ≈ 0.5` sobre ruido blanco y `alpha ≈ 1.5` sobre un camino aleatorio.
-
-```bash
-pytest tests/
-```
-
 ## Reproducir el análisis
-
-### Google Colab
-
-Abrir los notebooks de `notebooks/` en Colab y ejecutar todas las celdas. La primera celda clona el repositorio, instala las dependencias y descarga los datos desde PhysioNet.
-
-La primera celda apunta a este repositorio, de modo que funciona sin cambios.
 
 ### Entorno local
 
@@ -85,11 +85,28 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-python -c "from sys import path; path.insert(0, 'src'); import gait; gait.download.fetch_all()"
-jupyter notebook notebooks/01_eda_gaitndd.ipynb
+python scripts/descargar_datos.py
+pytest tests/
+python scripts/ejecutar_notebooks.py
 ```
 
-La descarga son 18 MB para `gaitndd` y 302 MB para `gaitpdb`.
+La descarga son 18 MB para `gaitndd` y 302 MB para `gaitpdb`. Si en macOS la descarga falla con `CERTIFICATE_VERIFY_FAILED`, falta instalar los certificados del Python de python.org (`Install Certificates.command`) o se puede descargar a mano con `curl` (ver `data/README.md`).
+
+`ejecutar_notebooks.py` corre los seis notebooks en orden y sobrescribe sus salidas, las figuras de `reports/figures/` y las tablas de `reports/tables/`. También acepta nombres concretos:
+
+```bash
+python scripts/ejecutar_notebooks.py 04_modelado.ipynb
+```
+
+Todas las particiones usan la semilla 42 (`config.RANDOM_STATE`), así que los resultados se reproducen exactamente con las mismas versiones de las librerías.
+
+### Google Colab
+
+Abrir cualquier notebook de `notebooks/` en Colab y ejecutar todas las celdas. La primera celda clona el repositorio, instala las dependencias y la segunda descarga los datos desde PhysioNet.
+
+### Tiempo de ejecución
+
+En un portátil con 10 núcleos: notebook 03, menos de un minuto; 04, unos 12 minutos; 05, unos 16; 06, unos 7. La validación cruzada anidada usa todos los núcleos disponibles.
 
 ## Hallazgos de la entrega P1
 
@@ -105,12 +122,34 @@ La descarga son 18 MB para `gaitndd` y 302 MB para `gaitpdb`.
 
 **La cohorte de validación resuelve ese confusor.** En `gaitpdb` la diferencia de edad entre grupos es de 2.6 años y no alcanza significancia (p = 0.063), frente a 27.5 años y p = 3.2 × 10⁻⁵ en la cohorte principal. Eso la convierte en el instrumento para aislar el efecto demográfico, no solo en una prueba de generalización. Trae sus propios defectos, documentados en el notebook 02: tabuladores de relleno variables que rompen `read_csv`, talla en centímetros en uno de los tres sub-estudios, un sujeto huérfano con el identificador mal escrito (`Juc010` por `JuCo10`), y Hoehn & Yahr y UPDRS como fuga perfecta de la etiqueta. Sus 306 grabaciones provienen de 165 sujetos, con hasta siete caminatas por paciente, de modo que exige el mismo particionamiento agrupado.
 
+## Resultados de la entrega P2
+
+Validación cruzada anidada y agrupada por sujeto (5 particiones × 10 repeticiones, 63 sujetos, 12 descriptores de marcha). Media ± desviación estándar entre repeticiones.
+
+| Modelo | Exactitud balanceada | F1 macro | AUC |
+|---|---|---|---|
+| Clase mayoritaria | 0.250 ± 0.000 | 0.116 ± 0.000 | 0.500 |
+| Logística con CV y DFA | 0.538 ± 0.034 | 0.519 ± 0.036 | 0.735 |
+| Regresión logística | 0.591 ± 0.041 | 0.583 ± 0.045 | 0.812 |
+| SVM (RBF) | 0.537 ± 0.026 | 0.508 ± 0.025 | 0.783 |
+| Bosque aleatorio | 0.605 ± 0.016 | 0.595 ± 0.018 | 0.829 |
+| Gradient boosting | 0.566 ± 0.049 | 0.560 ± 0.053 | 0.763 |
+| Bosque entrenado con ventanas | 0.647 ± 0.028 | 0.631 ± 0.029 | 0.862 |
+
+- **PI1.** Separar control de paciente alcanza 0.86–0.87 de exactitud balanceada; distinguir entre Parkinson, Huntington y ELA, 0.56–0.62 (azar 0.33). El par más difícil es Parkinson–Huntington (AUC 0.70), y los errores en Huntington se concentran en los casos leves.
+- **PI2.** Evaluar ventanas como independientes infla la exactitud en 19 puntos (P1). Entrenar con ventanas y evaluar por sujeto es válido y dio el mejor resultado, aunque la mejora no es significativa.
+- **PI3.** Edad y sexo solos clasifican con 0.44–0.46 dentro de `gaitndd`. Transportado sin reentrenar a `gaitpdb`, donde la edad casi no difiere entre grupos, el modelo de tiempos de zancada conserva un AUC de 0.71 [0.63, 0.79] y el de edad cae a 0.52.
+- Ninguna diferencia entre modelos es significativa (prueba t corregida de Nadeau y Bengio); todos superan el azar (permutación, p = 0.001).
+- Las variables que dependen de la duración del registro (número de zancadas, duración observada, cadencia) mejoran la validación interna pero hacen que la logística clasifique al 98 % de `gaitpdb` como control. Por eso quedan fuera del modelo.
+
+Detalle completo en `paper/p2/main.pdf` y en los notebooks 03 a 06; todas las tablas están en `reports/tables/`.
+
 ## Entregas
 
-| Etapa | Contenido | Estado |
+| Etapa | Contenido | Documentos |
 |---|---|---|
-| P1 | Problema, dataset y EDA | Completa |
-| P2 | Preprocesamiento, baseline, modelado, evaluación y discusión | En curso |
+| P1 | Problema, dataset y EDA | `paper/p1/` · notebooks 01 y 02 |
+| P2 | Preprocesamiento, baseline, modelado, evaluación y discusión | `paper/p2/` · notebooks 03 a 06 |
 
 ## Licencia
 

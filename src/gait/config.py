@@ -9,6 +9,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+TABLES_DIR = PROJECT_ROOT / "reports" / "tables"
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,13 @@ GROUP_LABELS = {
     "control": "Control",
     "park": "Parkinson",
     "hunt": "Huntington",
+    "als": "ELA",
+}
+
+GROUP_SHORT = {
+    "control": "Ctrl",
+    "park": "EP",
+    "hunt": "EH",
     "als": "ELA",
 }
 
@@ -77,3 +85,73 @@ ROBUST_OUTLIER_THRESHOLD = 4.0
 
 MISSING_TOKEN = "MISSING"
 RANDOM_STATE = 42
+
+EXCLUDED_RECORDS = ["hunt20"]
+
+TIMING_FEATURES = [
+    "stride_mean",
+    "stride_cv",
+    "stride_iqr",
+    "stride_diff_cv",
+    "asymmetry_stride",
+    "autocorr_lag1",
+    "dfa_alpha",
+    "sample_entropy",
+]
+
+PHASE_FEATURES = [
+    "swing_pct_cv",
+    "double_support_pct_mean",
+    "double_support_pct_cv",
+    "asymmetry_swing",
+]
+
+GAIT_FEATURES = TIMING_FEATURES + PHASE_FEATURES
+
+CLASSIC_FEATURES = ["stride_cv", "dfa_alpha"]
+
+P1_FEATURES = [
+    "n_strides",
+    "observed_span_s",
+    "cadence_strides_per_min",
+    "stride_mean",
+    "stride_sd",
+    "stride_cv",
+    "stride_iqr",
+    "swing_pct_mean",
+    "swing_pct_sd",
+    "swing_pct_cv",
+    "swing_pct_iqr",
+    "double_support_pct_mean",
+    "double_support_pct_sd",
+    "double_support_pct_cv",
+    "double_support_pct_iqr",
+    "asymmetry_stride",
+    "asymmetry_swing",
+    "autocorr_lag1",
+    "dfa_alpha",
+]
+
+DURATION_FEATURES = ["n_strides", "observed_span_s", "cadence_strides_per_min"]
+
+DEMOGRAPHIC_FEATURES = ["age", "male"]
+SPEED_FEATURES = ["speed_ms"]
+
+FEATURE_LABELS = {
+    "stride_mean": "duración media",
+    "stride_cv": "CV de zancada",
+    "stride_iqr": "IQR de zancada",
+    "stride_diff_cv": "variab. sucesiva",
+    "asymmetry_stride": "asimetría de zancada",
+    "autocorr_lag1": "autocorrelación",
+    "dfa_alpha": "DFA α",
+    "sample_entropy": "entropía muestral",
+    "swing_pct_mean": "balanceo medio",
+    "swing_pct_cv": "CV de balanceo",
+    "double_support_pct_mean": "apoyo doble medio",
+    "double_support_pct_cv": "CV de apoyo doble",
+    "asymmetry_swing": "asimetría de balanceo",
+    "age": "edad",
+    "male": "sexo masculino",
+    "speed_ms": "velocidad",
+}

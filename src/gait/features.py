@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+from typing import Callable
+
 import numpy as np
 import pandas as pd
+from numpy.lib.stride_tricks import sliding_window_view
 
 MIN_BOX_SIZE = 4
 BOXES_PER_DECADE = 12
+SAMPLE_ENTROPY_ORDER = 2
+SAMPLE_ENTROPY_TOLERANCE = 0.2
+
+Extractor = Callable[..., dict[str, float]]
 
 
 def coefficient_of_variation(values: np.ndarray) -> float:
     mean = np.mean(values)
     return float(np.std(values, ddof=1) / mean) if mean else np.nan
+
+
+def successive_difference_cv(values: np.ndarray) -> float:
+    if len(values) < 3:
+        return np.nan
+    mean = np.mean(values)
+    return float(np.sqrt(np.mean(np.diff(values) ** 2)) / mean) if mean else np.nan
 
 
 def autocorrelation(values: np.ndarray, lag: int = 1) -> float:
@@ -55,9 +69,38 @@ def detrended_fluctuation_alpha(values: np.ndarray) -> float:
     return float(slope)
 
 
+def _template_matches(values: np.ndarray, length: int, count: int, radius: float) -> float:
+    templates = sliding_window_view(values, length)[:count]
+    distances = np.max(np.abs(templates[:, None, :] - templates[None, :, :]), axis=2)
+    return (np.count_nonzero(distances <= radius) - count) / 2
+
+
+def sample_entropy(
+    values: np.ndarray,
+    order: int = SAMPLE_ENTROPY_ORDER,
+    tolerance: float = SAMPLE_ENTROPY_TOLERANCE,
+) -> float:
+    values = np.asarray(values, dtype=float)
+    count = len(values) - order
+    if count < 2:
+        return np.nan
+    radius = tolerance * np.std(values)
+    shorter = _template_matches(values, order, count, radius)
+    longer = _template_matches(values, order + 1, count, radius)
+    if shorter == 0 or longer == 0:
+        return np.nan
+    return float(-np.log(longer / shorter))
+
+
 def asymmetry_index(left: np.ndarray, right: np.ndarray) -> float:
     total = left.mean() + right.mean()
     return float(200 * abs(left.mean() - right.mean()) / total) if total else np.nan
+
+
+def stride_intervals(strides: pd.DataFrame, side: str = "left") -> np.ndarray:
+    if side == "both":
+        return strides[["stride_left_s", "stride_right_s"]].mean(axis=1).to_numpy()
+    return strides[f"stride_{side}_s"].to_numpy()
 
 
 def _dispersion_stats(values: np.ndarray, prefix: str) -> dict[str, float]:
@@ -69,37 +112,52 @@ def _dispersion_stats(values: np.ndarray, prefix: str) -> dict[str, float]:
     }
 
 
-def subject_features(strides: pd.DataFrame) -> dict[str, float]:
-    left = strides.stride_left_s.to_numpy()
-    right = strides.stride_right_s.to_numpy()
+def subject_features(strides: pd.DataFrame, side: str = "left") -> dict[str, float]:
+    stride = stride_intervals(strides, side)
     swing = strides[["swing_left_pct", "swing_right_pct"]].mean(axis=1).to_numpy()
     support = strides.double_support_pct.to_numpy()
     span = strides.time_s.max() - strides.time_s.min()
 
     features = {"n_strides": len(strides), "observed_span_s": span}
     features["cadence_strides_per_min"] = 60 * len(strides) / span if span else np.nan
-    features.update(_dispersion_stats(left, "stride"))
+    features.update(_dispersion_stats(stride, "stride"))
     features.update(_dispersion_stats(swing, "swing_pct"))
     features.update(_dispersion_stats(support, "double_support_pct"))
-    features["asymmetry_stride"] = asymmetry_index(left, right)
+    features["asymmetry_stride"] = asymmetry_index(
+        strides.stride_left_s.to_numpy(), strides.stride_right_s.to_numpy()
+    )
     features["asymmetry_swing"] = asymmetry_index(
         strides.swing_left_pct.to_numpy(), strides.swing_right_pct.to_numpy()
     )
-    features["autocorr_lag1"] = autocorrelation(left)
-    features["dfa_alpha"] = detrended_fluctuation_alpha(left)
+    features["autocorr_lag1"] = autocorrelation(stride)
+    features["dfa_alpha"] = detrended_fluctuation_alpha(stride)
     return features
 
 
-def build_feature_table(strides: pd.DataFrame) -> pd.DataFrame:
+def extended_features(strides: pd.DataFrame, side: str = "left") -> dict[str, float]:
+    stride = stride_intervals(strides, side)
+    features = subject_features(strides, side)
+    features["stride_diff_cv"] = successive_difference_cv(stride)
+    features["sample_entropy"] = sample_entropy(stride)
+    return features
+
+
+def build_feature_table(
+    strides: pd.DataFrame, extractor: Extractor = subject_features, **options
+) -> pd.DataFrame:
     rows = [
-        {"group": group, "record": record, **subject_features(subject)}
+        {"group": group, "record": record, **extractor(subject, **options)}
         for (group, record), subject in strides.groupby(["group", "record"], sort=False)
     ]
     return pd.DataFrame(rows)
 
 
 def window_features(
-    strides: pd.DataFrame, window_strides: int = 30, min_strides: int = 20
+    strides: pd.DataFrame,
+    window_strides: int = 30,
+    min_strides: int = 20,
+    extractor: Extractor = subject_features,
+    **options,
 ) -> pd.DataFrame:
     rows = []
     for (group, record), subject in strides.groupby(["group", "record"], sort=False):
@@ -113,7 +171,7 @@ def window_features(
                     "group": group,
                     "record": record,
                     "window_index": start // window_strides,
-                    **subject_features(window),
+                    **extractor(window, **options),
                 }
             )
     return pd.DataFrame(rows)

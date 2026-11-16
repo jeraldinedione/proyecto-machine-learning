@@ -1,0 +1,7 @@
+variables,modelo,exactitud bal.,AUC
+tiempos de zancada,Regresión logística,0.659 ± 0.027,0.686 ± 0.023
+tiempos de zancada,Bosque aleatorio,0.666 ± 0.019,0.705 ± 0.014
+todos los descriptores,Regresión logística,0.723 ± 0.026,0.809 ± 0.017
+todos los descriptores,Bosque aleatorio,0.706 ± 0.016,0.799 ± 0.016
+edad,Regresión logística,0.560 ± 0.019,0.577 ± 0.023
+edad,Bosque aleatorio,0.573 ± 0.032,0.513 ± 0.026
